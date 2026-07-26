@@ -1,0 +1,176 @@
+---
+title: "Long-Term Memory: the Store"
+format: html
+---
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/12_long_term_memory.ipynb)
+
+*Run this lesson yourself — opens in Google Colab. You need a free [Groq API key](00b_setup_groq.qmd).*
+
+In [Context and State](07_context_and_state.ipynb) you used a **checkpointer**
+(`InMemorySaver`) to keep a conversation going across turns. That is
+**short-term memory** — it is scoped to one `thread_id`.
+
+This lesson adds the other half: the **Store**, which is **long-term memory**
+— facts that must outlive the conversation they were learned in.
+
+::: {.callout-important}
+These are two different objects with two different lifetimes. A growing list of
+chat messages is **not** long-term memory — it is still just the thread. The
+capstone rubric asks for an *explicit* short-term vs. long-term split, and this
+is the distinction it means.
+:::
+
+| | Short-term | Long-term |
+|---|---|---|
+| Object | `InMemorySaver` (checkpointer) | `InMemoryStore` (store) |
+| Scoped by | `thread_id` | namespace, e.g. `("users", user_id)` |
+| Survives a new thread? | No | **Yes** |
+| Holds | the in-progress run, paused interrupts | preferences, profile, durable facts |
+| Production swap | `SqliteSaver` / `PostgresSaver` | `PostgresStore` |
+
+```bash
+pip install -qU langgraph langchain langchain-groq
+```
+
+```python
+import os
+from langgraph.func import entrypoint, task
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.memory import InMemoryStore
+
+# Short-term: the in-progress run, keyed by thread_id
+checkpointer = InMemorySaver()
+
+# Long-term: durable facts, keyed by namespace — independent of any thread
+store = InMemoryStore()
+
+print("checkpointer:", type(checkpointer).__name__)
+print("store       :", type(store).__name__)
+```
+
+## Writing and reading a durable fact
+
+A namespace is just a tuple. Group by whatever you are remembering *about* —
+usually the user.
+
+```python
+def remember(user_id: str, key: str, value):
+    """Write a durable fact for this user."""
+    store.put(("users", user_id), key, {"value": value})
+
+
+def recall(user_id: str, key: str):
+    """Read it back. Returns None if we have never learned it."""
+    item = store.get(("users", user_id), key)
+    return item.value["value"] if item else None
+
+
+remember("sara", "tone", "prefers short, direct answers")
+print(recall("sara", "tone"))
+print(recall("sara", "language"))   # never set -> None
+```
+
+Expected output:
+
+```
+prefers short, direct answers
+None
+```
+
+## Using the store inside a workflow
+
+Pass `store=` to the `@entrypoint` alongside the checkpointer. Below, the agent
+counts how many questions this user has ever asked — across *all* their
+conversations.
+
+```python
+from langchain_groq import ChatGroq
+
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+
+
+@task
+def answer(question: str, tone: str | None) -> str:
+    style = f"\nStyle preference: {tone}" if tone else ""
+    return llm.invoke(f"Answer briefly.{style}\n\nQuestion: {question}").content
+
+
+@entrypoint(checkpointer=checkpointer, store=store)
+def assistant(inputs: dict) -> dict:
+    user_id = inputs["user_id"]
+    question = inputs["question"]
+
+    # --- long-term read: what do we already know about this person? ---
+    tone = recall(user_id, "tone")
+    asked = recall(user_id, "questions_asked") or 0
+
+    reply = answer(question, tone).result()
+
+    # --- long-term write: this survives the thread ending ---
+    remember(user_id, "questions_asked", asked + 1)
+
+    return {"answer": reply, "questions_asked_total": asked + 1}
+```
+
+## Proving it is really long-term
+
+This is the part students most often skip. A cross-thread test is the *only*
+thing that distinguishes a Store from a chat history: use a **brand-new
+`thread_id`** and show the fact survived.
+
+```python
+# --- Thread A ---
+cfg_a = {"configurable": {"thread_id": "thread-A"}}
+r1 = assistant.invoke({"user_id": "sara", "question": "What is a vector store?"}, cfg_a)
+print("thread-A ->", r1["questions_asked_total"])
+
+# --- A COMPLETELY DIFFERENT THREAD, same user ---
+cfg_b = {"configurable": {"thread_id": "thread-B"}}
+r2 = assistant.invoke({"user_id": "sara", "question": "And what is an embedding?"}, cfg_b)
+print("thread-B ->", r2["questions_asked_total"])
+
+# --- a different user starts from zero ---
+cfg_c = {"configurable": {"thread_id": "thread-C"}}
+r3 = assistant.invoke({"user_id": "omar", "question": "What is RAG?"}, cfg_c)
+print("thread-C (new user) ->", r3["questions_asked_total"])
+```
+
+Expected output:
+
+```
+thread-A -> 1
+thread-B -> 2      <- survived a brand-new thread: this is long-term memory
+thread-C (new user) -> 1
+```
+
+If `thread-B` had printed `1`, the value was living in the thread, not the
+store — that is the bug to watch for.
+
+::: {.callout-tip}
+## What full marks looks like
+The capstone's *Context & State* section wants exactly this screenshot: a
+counter (or preference) written in one thread and correctly read back in a
+different one. Run it, keep the output in your notebook.
+:::
+
+## Persisting beyond the process
+
+`InMemorySaver` and `InMemoryStore` both vanish when the kernel restarts. For
+anything real, swap the checkpointer for a SQLite-backed one — same API:
+
+```python
+from langgraph.checkpoint.sqlite import SqliteSaver
+
+with SqliteSaver.from_conn_string("checkpoints.db") as checkpointer:
+    @entrypoint(checkpointer=checkpointer, store=store)
+    def assistant(inputs: dict) -> dict:
+        ...
+```
+
+Install with `pip install langgraph-checkpoint-sqlite`. For Postgres, use
+`PostgresSaver` from `langgraph-checkpoint-postgres`.
+
+**Try it:** run a workflow, restart the kernel, then resume the same
+`thread_id`. With `SqliteSaver` the run picks up where it left off; with
+`InMemorySaver` it starts over.

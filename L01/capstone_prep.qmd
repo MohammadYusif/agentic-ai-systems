@@ -1,0 +1,183 @@
+---
+title: "Capstone Prep: what each rubric section is asking for"
+format: html
+---
+
+The capstone is graded on **8 sections, 100 points, pass at 60** — with one
+extra rule: **no single section may score below 40% of its points.** A strong
+project cannot compensate for a section you skipped.
+
+This page maps each section to the lesson that teaches it, states what full
+marks looks like, and names the mistake that most often costs the points.
+Everything in the "commonly lost on" column is a pattern seen repeatedly in
+real submissions.
+
+::: {.callout-important}
+## Read this first
+Most lost marks are **not** from difficult work done badly. They are from a
+requirement nobody noticed — a deliverable that was never attempted, or one
+that was written about but never actually run. Go through this table before you
+start, and again before you submit.
+:::
+
+## The eight sections
+
+### 1. Agent fundamentals — 15 pts
+
+**Where:** [Agents](01_agents.ipynb) · [Sub-agents](02_subagents.ipynb)
+
+**Full marks:** real tool calls the model chooses to make, plus structured
+output (`with_structured_output` + a Pydantic model) wherever the result is
+parsed by code rather than read by a human.
+
+**Commonly lost on:** returning a hardcoded f-string from a "tool" instead of
+doing real work. If the function ignores its arguments, it is not a tool call.
+
+### 2. Multi-agent / routing architecture — 15 pts
+
+**Where:** [Sub-agents](02_subagents.ipynb) ·
+[Customer support agent](08_customer_support_agent.ipynb)
+
+**Full marks:** the routing decision is made by the **LLM** — a supervisor that
+classifies with structured output, or a real handoff — matching one of the four
+track patterns.
+
+**Commonly lost on:** `if "email" in question.lower():`. Keyword matching is
+not routing. It is the single most frequent architecture mistake, and it is
+visible in one glance at the code.
+
+### 3. RAG pipeline — 15 pts
+
+**Where:** [RAG overview](03_retrieval.qmd) · [Embeddings](04_embeddings.ipynb)
+· [Semantic search](05_semantic_search.ipynb) · [RAG agent](06_RAG_agent.ipynb)
+
+**Full marks:** documents genuinely loaded → split → embedded → stored →
+retrieved, **and** a written justification of 2-Step vs. Agentic vs. Hybrid RAG
+for *your* problem.
+
+**Commonly lost on:** a retriever that returns nothing. Ask a question whose
+answer is verbatim in your documents; if the answer says *"the context does not
+contain that information,"* your pipeline is broken no matter how correct the
+code looks. In a notebook this is usually cells run out of order — restart the
+kernel and run top to bottom before believing anything.
+
+### 4. Context & state management — 15 pts
+
+**Where:** [Context and state](07_context_and_state.ipynb) ·
+[Long-term memory](12_long_term_memory.qmd)
+
+**Full marks:** a checkpointer with a `thread_id` for short-term state, **and a
+separate Store** for long-term facts — with a cross-thread test proving a fact
+written in one thread is readable from a different one.
+
+**Commonly lost on:** calling a growing list of chat messages "long-term
+memory." The rubric explicitly rules this out. If your long-term memory
+disappears when the thread changes, it was short-term memory.
+
+### 5. Human-in-the-loop — 10 pts
+
+**Where:** [Customer support agent](08_customer_support_agent.ipynb) ·
+[Thinking in LangGraph](09_langgraph.qmd) · [Reliability](13_reliability.qmd)
+
+**Full marks:** a real `interrupt()` that pauses before something
+irreversible, **and** a `Command(resume=...)` that completes the run — both
+demonstrated, both with output in the notebook.
+
+**Commonly lost on:** pausing but never resuming. A notebook that fires the
+interrupt and stops — often with the resume call left commented out — proves
+half the requirement. This is the most frequent half-finished deliverable of
+all.
+
+### 6. LangGraph functional API & error handling — 15 pts
+
+**Where:** [Thinking in LangGraph](09_langgraph.qmd) ·
+[Workflow patterns](10_workflows.ipynb) · [Reliability](13_reliability.qmd)
+
+**Full marks:** built with `@task` / `@entrypoint`, plus **at least two** of the
+four error strategies implemented in code.
+
+**Commonly lost on:** two things. First, building on `StateGraph` — it works,
+but the rubric names the **Functional API** specifically. Second, a
+hand-written `for` loop with `time.sleep()` presented as "transient retry"; the
+requirement is a real `RetryPolicy` object.
+
+### 7. Workflow pattern — 10 pts
+
+**Where:** [Workflow patterns](10_workflows.ipynb)
+
+**Full marks:** implement one of Prompt Chaining, Parallelization, Routing,
+Orchestrator-Worker, or Evaluator-Optimizer — and **name it** in your write-up,
+with a sentence on why it fits.
+
+**Commonly lost on:** implementing one correctly and never naming it. The
+points are for the explicit choice, so say the words.
+
+### 8. LangSmith observability — 5 pts
+
+**Where:** [LangSmith](11_langsmith.qmd) · [LangSmith lab](14_langsmith_lab.qmd)
+
+**Full marks:** tracing genuinely on, plus a short write-up of something the
+trace actually showed you — a bottleneck, a bad tool call, a retry firing.
+
+**Commonly lost on:** the variable name. It is `LANGCHAIN_TRACING_V2`.
+`LANGSMITH_TRACING_V2` is not a real variable: it fails silently, produces no
+trace, and no error. Verify your key before your demo, not after.
+
+## GitHub & documentation requirements
+
+These apply to **every project in every SDAIA Academy programme**, on top of the
+eight sections above, and they are part of how the project is evaluated — not
+paperwork. Your repository must include:
+
+- A clear, comprehensive **project description**
+- A **professional README** — the project idea, plus how to run and use it
+- Proper **technical documentation**
+- Good **Git practices** — meaningful, incremental commits, a sane structure,
+  and a `.gitignore` that excludes secrets and generated files
+- A statement of **which training programme** the project was completed under
+  (programme name + cohort dates)
+- A link to **[SDAIA Academy's GitHub](https://github.com/SDAIAAcademy)** where
+  relevant
+
+Every trainee needs an active GitHub account, and projects are expected to stay
+documented and updated there.
+
+*Encouraged, not scored:* star and follow strong Saudi repositories and
+accounts, contribute to open source, engage through forks, pull requests and
+issues, and share standout projects with the community.
+
+## The write-up
+
+One short paragraph per section, saying which pattern you used and why. This is
+how understanding is verified, and it is worth real marks on its own.
+
+::: {.callout-warning}
+## Write it from your results, not from your plan
+Graders check the write-up against the code and the captured output. Claims
+that contradict your own notebook are worse than an admitted gap — and they are
+easy to spot. Two real examples:
+
+- A write-up stating the trace "confirmed low latency" in a notebook whose own
+  output shows `403 Forbidden` on every tracing attempt.
+- A write-up describing a full working pipeline in a repo where every cell is
+  unexecuted and the documents are still placeholder text.
+
+If something did not work, say so and describe what you inspected instead. An
+honest gap costs a few points. A claim your own output contradicts costs
+credibility across the whole submission.
+:::
+
+## Before you submit
+
+- [ ] **Your full name is in the README or the notebook header.** Submissions
+      without names are not graded — this is not a formality.
+- [ ] Restart the kernel and **run everything top to bottom.** Fresh, in order.
+- [ ] Every demo cell has **captured output** saved in the file.
+- [ ] The interrupt **and** the resume both ran.
+- [ ] A cross-thread test proves long-term memory.
+- [ ] No API key in the code or in git history.
+- [ ] No `TODO` or template placeholder text left anywhere.
+- [ ] Your declared track (A / B / C / D) is stated explicitly.
+- [ ] Every claim in the write-up is backed by something visible in the file.
+- [ ] **README** covers the project description and how to run it, `.gitignore`
+      excludes secrets, and the programme name and cohort dates are stated.

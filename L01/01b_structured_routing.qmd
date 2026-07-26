@@ -1,0 +1,205 @@
+---
+title: "Structured Output as the Routing Primitive"
+format: html
+---
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/01b_structured_routing.ipynb)
+
+*Run this lesson yourself — opens in Google Colab. You need a free [Groq API key](00b_setup_groq.qmd).*
+
+In [Agents](01_agents.ipynb) you used `with_structured_output` to get a clean
+object back instead of prose. This short lesson reframes it: **structured output
+is how an agent makes a decision** — and it is the single most important
+technique in the whole course for multi-agent work.
+
+Every multi-agent system needs something that answers *"which of my components
+should handle this?"* That something is a router. And a router is just an LLM
+call with a constrained output type.
+
+## The wrong way
+
+Almost every first attempt at routing looks like this:
+
+```python
+def route(question: str) -> str:
+    q = question.lower()
+    if "invoice" in q or "refund" in q:
+        return "billing"
+    elif "password" in q or "login" in q:
+        return "technical"
+    return "general"
+```
+
+It works on the examples you thought of, and fails on everything else:
+
+- *"I was double-charged"* → no keyword → `general` (wrong)
+- *"My login is fine but the invoice is wrong"* → matches **both**
+- *"لا أستطيع الدخول إلى حسابي"* → matches nothing
+- *"I need help with my bill"* → "bill" ≠ "invoice" → `general` (wrong)
+
+You cannot enumerate language. That is what the model is for.
+
+::: {.callout-warning}
+This pattern is graded as *not* routing. If your supervisor is a chain of
+`if ... in question`, the multi-agent section of the capstone scores near zero
+no matter how good the rest is.
+:::
+
+```bash
+pip install -qU langchain langchain-groq pydantic
+```
+
+## The right way
+
+Two pieces: a Pydantic model that describes the decision, and
+`with_structured_output` to force the model into it.
+
+```python
+from typing import Literal
+from pydantic import BaseModel, Field
+from langchain_groq import ChatGroq
+
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+
+
+class Route(BaseModel):
+    """Where a customer message should go."""
+
+    destination: Literal["billing", "technical", "general"] = Field(
+        description=(
+            "billing for payments, invoices, refunds, subscriptions; "
+            "technical for login, bugs, errors, and how-to questions; "
+            "general for anything else"
+        )
+    )
+    reason: str = Field(description="One short sentence justifying the choice")
+
+
+router = llm.with_structured_output(Route)
+
+decision = router.invoke("I was double-charged this month")
+print(decision.destination, "|", decision.reason)
+```
+
+Expected output:
+
+```
+billing | The customer reports being charged twice, which is a payment issue.
+```
+
+The word "billing" never appeared in the message. That is the whole point.
+
+## Why `Literal` matters more than it looks
+
+`destination` is typed `Literal["billing", "technical", "general"]`. This does
+two jobs at once:
+
+1. **It constrains the model.** It cannot return `"refunds"` or
+   `"Billing Department"` — values you have no branch for.
+2. **It documents your branches.** The type *is* the list of destinations, so
+   the router and your `if/elif` can never drift apart.
+
+Compare with `destination: str`, which will eventually return something you did
+not handle, at which point your workflow silently falls through to the default
+and you spend an hour wondering why.
+
+::: {.callout-tip}
+The `description=` on each field is not decoration — it is the prompt the model
+sees. A vague description is a vague router. Most "the router keeps getting it
+wrong" problems are fixed here, not by changing models.
+:::
+
+## Test it on the cases that break keyword matching
+
+```python
+tests = [
+    "I was double-charged this month",
+    "My login is fine but the invoice is wrong",
+    "لا أستطيع الدخول إلى حسابي",
+    "I need help with my bill",
+    "what are your opening hours?",
+]
+
+for t in tests:
+    d = router.invoke(t)
+    print(f"{d.destination:10} <- {t}")
+```
+
+Run it. Note especially the Arabic line and the mixed billing/login one —
+both of which the keyword version gets wrong.
+
+## Wiring the decision into control flow
+
+The router returns a value; your code branches on it. Because the type is
+`Literal`, every branch is accounted for.
+
+```python
+def handle_billing(msg: str) -> str:
+    return f"[billing] looking up the charge for: {msg[:40]}..."
+
+
+def handle_technical(msg: str) -> str:
+    return f"[technical] checking account access for: {msg[:40]}..."
+
+
+def handle_general(msg: str) -> str:
+    return f"[general] {llm.invoke(msg).content[:80]}..."
+
+
+def respond(message: str) -> str:
+    d = router.invoke(message)
+    print(f"  routed to {d.destination}: {d.reason}")
+    if d.destination == "billing":
+        return handle_billing(message)
+    elif d.destination == "technical":
+        return handle_technical(message)
+    else:
+        return handle_general(message)
+
+
+print(respond("I can't sign in since yesterday"))
+```
+
+## Routing to more than one place
+
+Real questions sometimes need two sources. Add the option explicitly rather
+than trying to detect it afterwards — this is exactly the Track C pattern.
+
+```python
+class MultiRoute(BaseModel):
+    destination: Literal["academic", "campus", "both"] = Field(
+        description=("academic for grades, exams, attendance, withdrawal; "
+                     "campus for library, IT, careers, wellbeing; "
+                     "both when the question genuinely needs each")
+    )
+    reason: str
+
+
+multi = llm.with_structured_output(MultiRoute)
+
+d = multi.invoke("How do I appeal a grade, and where is the IT helpdesk?")
+print(d.destination, "|", d.reason)
+```
+
+Expected: `both`, because the question really does span two sources.
+
+::: {.callout-note}
+## Also a guardrail
+Constrained output is a safety mechanism, not only a convenience. A model that
+*cannot* emit an unhandled destination cannot send your workflow somewhere it
+has no code for. This is the cheapest guardrail in the course.
+:::
+
+## What to carry forward
+
+- A router is an LLM call with a constrained return type — nothing more.
+- `Literal` keeps the model and your branches in sync.
+- Field `description=` is the prompt; tune it there first.
+- The same pattern is the supervisor in
+  [Supervisor & Handoffs](08b_supervisor_and_handoffs.qmd), the source
+  selector in a multi-source RAG agent, and the classifier in a support triage
+  system.
+
+**Try it:** take the router above, add a `confidence: Literal["high", "low"]`
+field, and route low-confidence cases to a human instead of guessing. That is
+one line of code and a genuine human-in-the-loop trigger.

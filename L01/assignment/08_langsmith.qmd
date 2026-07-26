@@ -1,0 +1,17 @@
+---
+title: "Assignment 8: Observability"
+format: html
+---
+
+Your task is to: get **one real LangSmith trace** of an agent you have built, as
+in [the lab](../14_langsmith_lab.qmd).
+
+1. Configure tracing with the correct variable — `LANGCHAIN_TRACING_V2` — and
+   verify the key works *before* running your agent.
+2. Run your agent, then `wait_for_all_tracers()`.
+3. Open the trace and write **three sentences** on what it showed you: which
+   step dominated the latency, how many tokens the run cost, and one thing you
+   would change as a result.
+
+Sentence three is the point of the exercise. "Tracing was enabled" is not an
+observation.

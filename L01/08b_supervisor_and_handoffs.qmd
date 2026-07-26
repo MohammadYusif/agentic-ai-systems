@@ -1,0 +1,243 @@
+---
+title: "Supervisor, Handoffs, and Multi-Source Routing"
+format: html
+---
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/08b_supervisor_and_handoffs.ipynb)
+
+*Run this lesson yourself — opens in Google Colab. You need a free [Groq API key](00b_setup_groq.qmd).*
+
+You have now seen three ways to combine agents, one per lesson. This notebook
+puts them side by side, because the capstone asks you to pick one and the
+choice is the graded decision.
+
+| Shape | Who decides next | Lesson | Capstone track |
+|---|---|---|---|
+| **Agents as tools** | The calling agent | [Sub-agents](02_subagents.ipynb) | A |
+| **Supervisor + workers** | A dedicated router | this notebook | A |
+| **Handoff / escalation** | The agent itself, or a rule | [Customer support](08_customer_support_agent.ipynb) | B |
+| **Router across sources** | A classifier | this notebook | C |
+
+All four are built from the same primitive: the constrained-output decision
+from [Structured Output as the Routing Primitive](01b_structured_routing.qmd).
+
+```bash
+pip install -qU langchain langchain-groq langgraph langgraph-supervisor
+```
+
+## Shape 1 — Agents as tools (recap)
+
+The pattern from Day 1: a main agent holds sub-agents as tools and calls them
+when it decides to. Control always returns to the caller.
+
+**Use it when** the sub-agents are genuinely helpers — the main agent stays in
+charge and composes their results.
+
+**Weakness:** the caller carries every sub-agent's description in its own
+prompt, so it degrades as you add more.
+
+## Shape 2 — Supervisor + workers
+
+A dedicated agent whose only job is to decide who works next. Workers do not
+know about each other.
+
+**Use it when** you have several specialists and want one clear place where
+delegation happens (Track A).
+
+```python
+from langchain_groq import ChatGroq
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
+
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+
+# --- worker tools -------------------------------------------------------
+CALENDAR = []
+
+
+@tool
+def create_event(title: str, day: str) -> str:
+    """Add an event to the calendar."""
+    CALENDAR.append({"title": title, "day": day})
+    return f"Scheduled '{title}' on {day}."
+
+
+@tool
+def list_events() -> str:
+    """List all calendar events."""
+    return str(CALENDAR) if CALENDAR else "No events."
+
+
+@tool
+def draft_email(to: str, subject: str) -> str:
+    """Draft (but do not send) an email."""
+    return f"Draft to {to} — subject: {subject}"
+
+
+# --- workers ------------------------------------------------------------
+calendar_agent = create_react_agent(
+    model=llm, tools=[create_event, list_events], name="calendar_agent",
+    prompt="You handle calendar tasks only.")
+
+email_agent = create_react_agent(
+    model=llm, tools=[draft_email], name="email_agent",
+    prompt="You draft emails. Never claim an email was sent.")
+
+print("workers ready")
+```
+
+```python
+from langgraph_supervisor import create_supervisor
+
+supervisor = create_supervisor(
+    agents=[calendar_agent, email_agent],
+    model=llm,
+    prompt=(
+        "You supervise a calendar assistant and an email assistant. "
+        "Route scheduling and availability requests to calendar_agent, and "
+        "anything about writing or sending mail to email_agent. "
+        "After a worker replies, relay their full answer to the user."
+    ),
+).compile()
+
+result = supervisor.invoke({"messages": [
+    {"role": "user", "content": "Book a design review on Tuesday"}]})
+
+# The handoff is visible as a tool call named transfer_to_<worker>
+for m in result["messages"]:
+    for tc in getattr(m, "tool_calls", []) or []:
+        print("handoff ->", tc["name"])
+print()
+print(result["messages"][-1].content)
+```
+
+Expected: a `transfer_to_calendar_agent` call, then the worker's reply.
+
+::: {.callout-tip}
+## What full marks looks like
+Print the `transfer_to_*` tool calls like the loop above. It is direct evidence
+that the **LLM** chose the worker — which is exactly what the multi-agent
+section is checking for.
+:::
+
+## Shape 3 — Handoff to a human (Track B)
+
+Escalation is a handoff whose recipient is a person. The mechanism is
+`interrupt()` — the same one from
+[Thinking in LangGraph](09_langgraph.qmd).
+
+The decision of *whether* to escalate should be the model's, not a keyword
+rule.
+
+```python
+from typing import Literal
+from pydantic import BaseModel, Field
+from langgraph.func import entrypoint, task
+from langgraph.types import interrupt, Command
+from langgraph.checkpoint.memory import InMemorySaver
+
+
+class Triage(BaseModel):
+    urgency: Literal["low", "medium", "high"] = Field(
+        description="high when money, data loss, or an angry customer is involved")
+    needs_human: bool = Field(
+        description="True when a person must approve before we reply")
+    summary: str
+
+
+triage_llm = llm.with_structured_output(Triage)
+
+
+@task
+def triage(ticket: str) -> Triage:
+    return triage_llm.invoke(f"Triage this support ticket:\n\n{ticket}")
+
+
+@task
+def draft_reply(ticket: str, t: Triage) -> str:
+    return llm.invoke(
+        f"Write a short, professional support reply.\n\nTicket: {ticket}"
+    ).content
+
+
+@entrypoint(checkpointer=InMemorySaver())
+def support(ticket: str) -> dict:
+    t = triage(ticket).result()
+    draft = draft_reply(ticket, t).result()
+
+    if t.needs_human:                       # <- the handoff
+        decision = interrupt({
+            "action": "Approve or edit before this is sent",
+            "urgency": t.urgency,
+            "draft": draft,
+        })
+        if decision != "approve":
+            draft = str(decision)           # human rewrote it
+
+    return {"urgency": t.urgency, "escalated": t.needs_human, "reply": draft}
+```
+
+```python
+cfg = {"configurable": {"thread_id": "ticket-1"}}
+
+paused = support.invoke("I was charged twice and I want my money back NOW", cfg)
+print("PAUSED:", paused["__interrupt__"][0].value["urgency"])
+print("draft:", paused["__interrupt__"][0].value["draft"][:70], "...")
+
+done = support.invoke(
+    Command(resume="We've refunded the duplicate charge — it lands in 5 days."),
+    cfg)
+print("\nFINAL:", done)
+```
+
+Note the human's edit appears in the final reply — that is the difference
+between demonstrating a handoff and merely pausing.
+
+::: {.callout-important}
+A workflow that stops at the interrupt has shown half of Track B. Always run
+the `Command(resume=...)` and keep its output.
+:::
+
+## Shape 4 — Router across sources (Track C)
+
+Two knowledge bases, one classifier deciding which to search. The mistake to
+avoid is building two retrievers and then querying **the same store** for both
+— the routing then changes nothing.
+
+```python
+# Two SEPARATE stores. This is what makes routing meaningful.
+academic_store = Chroma.from_documents(academic_chunks, embeddings,
+                                       collection_name="academic")
+campus_store   = Chroma.from_documents(campus_chunks,   embeddings,
+                                       collection_name="campus")
+
+@task
+def retrieve(question: str, destination: str) -> str:
+    if destination == "academic":
+        return academic_retriever.invoke(question)
+    elif destination == "campus":
+        return campus_retriever.invoke(question)
+    else:                                    # "both"
+        return (academic_retriever.invoke(question)
+                + campus_retriever.invoke(question))
+```
+
+Pair it with the `MultiRoute` classifier from
+[the routing lesson](01b_structured_routing.qmd).
+
+**The test that proves it works:** ask a question answerable only from source A
+and confirm the trace shows only source A was searched — then do the same for
+B.
+
+## Choosing
+
+| If your problem is... | Use |
+|---|---|
+| One assistant that occasionally needs a specialist | Agents as tools |
+| Several specialists, one clear delegation point | Supervisor + workers |
+| Work that must reach a person before it is final | Handoff / `interrupt()` |
+| One question, several possible knowledge sources | Router across sources |
+
+Pick the one that matches your capstone track, name it in your write-up, and
+show the evidence: printed `transfer_to_*` calls for a supervisor, a completed
+interrupt/resume for a handoff, or per-source retrieval for a router.

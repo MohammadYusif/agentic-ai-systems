@@ -1,0 +1,20 @@
+---
+title: "Assignment 9: Durability and Guardrails"
+format: html
+---
+
+Your task is to: harden one of your agents for someone else to run, as in
+[the lesson](../15_production.qmd).
+
+1. **Swap to a durable checkpointer** (`SqliteSaver`). Start a run, hit an
+   `interrupt()`, **restart the kernel**, then resume the same `thread_id` and
+   show it completing. The restart is the whole exercise — an in-memory
+   checkpointer cannot pass it.
+2. **Remove every secret from the code.** Read keys from the environment or
+   Colab Secrets, add a `.gitignore`, and ship a `.env.example` with names but
+   no values.
+3. **Put one guardrail in front of an irreversible action** — validate the
+   input with Pydantic, or gate the action behind an `interrupt()`.
+
+If you have ever committed a key, revoke and rotate it at the provider. Deleting
+the line does not remove it from git history.

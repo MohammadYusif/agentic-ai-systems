@@ -1,0 +1,196 @@
+---
+title: "LangSmith: from zero to a real trace"
+format: html
+---
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/14_langsmith_lab.ipynb)
+
+*Run this lesson yourself — opens in Google Colab. You need a free [Groq API key](00b_setup_groq.qmd).*
+
+[The LangSmith lesson](11_langsmith.qmd) links the concepts. This is the lab:
+you will get **one real trace** you can point at, then evaluate a run.
+
+::: {.callout-warning}
+## The variable name that costs everyone the marks
+The tracing flag is **`LANGCHAIN_TRACING_V2`**.
+
+Common near-misses that silently do nothing — no error, no trace, and a
+write-up that claims tracing worked:
+
+- `LANGSMITH_TRACING_V2` ← not a real variable
+- `LANGCHAIN_TRACE` / `LANGCHAIN_TRACING` (without `_V2`)
+- setting it to the boolean `True` instead of the string `"true"`
+
+If your project page is empty, check this line first.
+:::
+
+```bash
+pip install -qU langsmith langchain langchain-groq langgraph
+```
+
+```python
+import os
+
+# In Colab, prefer Secrets (the key icon) over pasting keys into a cell.
+# from google.colab import userdata
+# os.environ["LANGCHAIN_API_KEY"] = userdata.get("LANGSMITH_API_KEY")
+
+os.environ["LANGCHAIN_TRACING_V2"] = "true"          # <- exact name
+os.environ["LANGCHAIN_API_KEY"] = "lsv2_..."          # from smith.langchain.com
+os.environ["LANGCHAIN_PROJECT"] = "my-capstone"       # any name you like
+
+print("tracing:", os.environ.get("LANGCHAIN_TRACING_V2"))
+print("project:", os.environ.get("LANGCHAIN_PROJECT"))
+```
+
+## Verify the key actually works
+
+Do this *before* running your agent. It turns a silent 401 into a loud one.
+
+```python
+from langsmith import Client
+
+client = Client()
+try:
+    list(client.list_projects(limit=1))
+    print("OK — key is valid and reachable")
+except Exception as e:
+    raise RuntimeError(
+        "LangSmith rejected the key. Create a new one at "
+        "https://smith.langchain.com -> Settings -> API Keys"
+    ) from e
+```
+
+## Generate a trace
+
+Any LangChain/LangGraph call is now traced automatically.
+
+```python
+from langchain_groq import ChatGroq
+from langgraph.func import entrypoint, task
+from langgraph.checkpoint.memory import InMemorySaver
+
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+
+
+@task
+def summarize(text: str) -> str:
+    return llm.invoke(f"Summarize in one sentence:\n\n{text}").content
+
+
+@task
+def critique(summary: str) -> str:
+    return llm.invoke(f"In one line, how could this summary improve?\n\n{summary}").content
+
+
+@entrypoint(checkpointer=InMemorySaver())
+def pipeline(text: str) -> dict:
+    s = summarize(text).result()
+    c = critique(s).result()
+    return {"summary": s, "critique": c}
+
+
+out = pipeline.invoke(
+    "LangGraph lets you build stateful agent workflows with checkpointing, "
+    "human-in-the-loop interrupts, and durable execution.",
+    {"configurable": {"thread_id": "trace-demo"}},
+)
+out
+```
+
+```python
+# Flush before you go look — traces are sent in the background.
+from langchain_core.tracers.langchain import wait_for_all_tracers
+
+wait_for_all_tracers()
+print("Flushed. Open https://smith.langchain.com and select project:",
+      os.environ["LANGCHAIN_PROJECT"])
+```
+
+## Read the trace
+
+Open the project and click into the run. Find these four things — they are what
+your write-up should describe:
+
+1. **The tree** — `pipeline` → `summarize` → `critique`. Does the shape match
+   what you intended?
+2. **Latency per step** — which task dominates? Usually the LLM call, not
+   retrieval.
+3. **Token counts and cost** — per call, and totalled for the run.
+4. **Inputs/outputs of each step** — the exact prompt sent, the exact text
+   returned.
+
+::: {.callout-tip}
+## What full marks looks like
+Not *"tracing was enabled."* Something only someone who opened the trace could
+write:
+
+> The trace showed `critique` taking 1.8s of the 2.4s total, because it waits
+> on `summarize`. Retrieval was 90ms — the bottleneck is sequential LLM calls,
+> so the two could be parallelised for independent inputs.
+:::
+
+## Evaluation: score a dataset
+
+Observability tells you what happened; evaluation tells you whether it was any
+good. Create a small dataset and grade your agent against it.
+
+```python
+from langsmith import Client
+
+client = Client()
+
+DATASET = "capstone-smoke-tests"
+examples = [
+    ("What is a checkpointer used for?", "short-term"),
+    ("How do I keep a fact across sessions?", "long-term"),
+]
+
+if not client.has_dataset(dataset_name=DATASET):
+    ds = client.create_dataset(dataset_name=DATASET)
+    client.create_examples(
+        inputs=[{"question": q} for q, _ in examples],
+        outputs=[{"must_mention": a} for _, a in examples],
+        dataset_id=ds.id,
+    )
+    print("created", DATASET)
+else:
+    print(DATASET, "already exists")
+```
+
+```python
+def my_agent(inputs: dict) -> dict:
+    answer = llm.invoke(inputs["question"]).content
+    return {"answer": answer}
+
+
+def mentions_key_term(outputs: dict, reference_outputs: dict) -> bool:
+    """A simple deterministic grader — cheap, and no judge to second-guess."""
+    return reference_outputs["must_mention"].lower() in outputs["answer"].lower()
+
+
+results = client.evaluate(
+    my_agent,
+    data=DATASET,
+    evaluators=[mentions_key_term],
+    experiment_prefix="capstone",
+)
+print("Open the experiment in LangSmith to compare runs side by side.")
+```
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Project page empty, no error | Wrong variable name | Use `LANGCHAIN_TRACING_V2` exactly |
+| `401 Unauthorized` in the console | Bad/expired key | New key in Settings → API Keys |
+| `403 Forbidden` | Key belongs to another workspace | Match key to the workspace you are viewing |
+| Traces appear minutes late | Background flush | `wait_for_all_tracers()` |
+| Works locally, empty in Colab | Env var set in a cell you re-ran out of order | Restart runtime, run setup cell first |
+| Unicode / `ordinal not in range` | Non-ASCII in traced content | Update `langsmith`; check locale |
+
+::: {.callout-note}
+If you genuinely cannot get a key working, say so plainly in your write-up and
+describe what you inspected instead (printed tool calls, timings). An honest
+gap costs a little; a fabricated finding costs much more.
+:::

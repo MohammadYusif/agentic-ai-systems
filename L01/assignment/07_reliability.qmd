@@ -1,0 +1,21 @@
+---
+title: "Assignment 7: Reliability"
+format: html
+---
+
+Your task is to: take any agent you have already built and make it survive
+failure, as in [the lesson](../13_reliability.qmd).
+
+Implement **two** of the four error-handling strategies in code:
+
+1. **Transient retry** — a real `RetryPolicy` on a `@task`. Prove it fires by
+   making the task fail deliberately on its first attempt and printing the
+   attempt number.
+2. **LLM-recoverable loopback** — catch an invalid model output and re-prompt
+   *with the error included*, rather than crashing.
+3. **User-fixable interrupt** — pause with `interrupt()` when required
+   information is missing, then resume with `Command(resume=...)`.
+4. **Unexpected bubble-up** — deliberately do not catch what you cannot handle,
+   and say so in one sentence.
+
+A hand-written `for` loop with `time.sleep()` does not count as strategy 1.

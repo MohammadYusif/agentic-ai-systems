@@ -1,0 +1,119 @@
+project:
+  type: website
+  # notebooks/ holds the runnable Colab twins of the .qmd lessons.
+  # They intentionally ship without saved outputs, which Quarto cannot
+  # render under `execute: enabled: false` - so keep them out of the build.
+  render:
+    - "*.qmd"
+    - "L01/*.ipynb"
+    - "!notebooks/"
+  title: "Building Agentic AI Systems"
+  preview:
+    port: 4700
+  output-dir: _site
+
+website:
+  title: "Building Agentic AI Systems"
+  site-url: https://mohammadyusif.github.io/agentic-ai-systems/
+  repo-url: https://github.com/HassanAlgoz/agentic-ai-systems
+  page-navigation: true
+  navbar:
+    left:
+      - href: index.qmd
+        text: "Home"
+    right:
+      - icon: github
+        text: "Original course by Hassan Algoz"
+        href: https://github.com/HassanAlgoz/agentic-ai-systems
+  sidebar:
+    style: docked
+    collapse-level: 1
+    contents:
+      - index.qmd
+      - section: "Day 1 — Overview & Agents"
+        contents:
+          - L01/00_intro.qmd
+          - L01/00b_setup_groq.qmd
+          - L01/case-studies.qmd
+          - L01/01_agents.ipynb
+          - L01/01b_structured_routing.qmd
+          - L01/02_subagents.ipynb
+      - section: "Day 2 — Retrieval & RAG"
+        contents:
+          - L01/03_retrieval.qmd
+          - L01/04_embeddings.ipynb
+          - L01/05_semantic_search.ipynb
+          - L01/06_RAG_agent.ipynb
+      - section: "Day 3 — Memory & State"
+        contents:
+          - L01/07_context_and_state.ipynb
+          - L01/08_customer_support_agent.ipynb
+          - L01/08b_supervisor_and_handoffs.qmd
+      - section: "Day 4 — LangGraph & LangSmith"
+        contents:
+          - L01/09_langgraph.qmd
+          - L01/10_workflows.ipynb
+          - L01/11_langsmith.qmd
+      - section: "Day 5 — Reliability & Production"
+        contents:
+          - L01/12_long_term_memory.qmd
+          - L01/13_reliability.qmd
+          - L01/14_langsmith_lab.qmd
+          - L01/15_production.qmd
+      - section: "Capstone"
+        contents:
+          - L01/capstone_prep.qmd
+      - section: "Reference"
+        contents:
+          - L01/faq.qmd
+          - L01/never_expose_api_keys.qmd
+  page-footer:
+    left: "Days 1–4 by [Hassan Algoz](https://github.com/HassanAlgoz/agentic-ai-systems) · Day 5, Capstone Prep & assignments 6–9 by Mohammad Yusif"
+    right:
+      - icon: github
+        href: https://github.com/HassanAlgoz/agentic-ai-systems
+        text: "Original repo"
+
+execute:
+  # Notebooks already contain saved outputs (they were run by the author
+  # with real API keys). Students won't have those keys configured here,
+  # so render from the saved outputs instead of re-executing.
+  enabled: false
+
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-title: "Contents"
+    anchor-sections: true
+    smooth-scroll: true
+    mermaid:
+      theme: default
+    respect-user-color-scheme: true
+    theme:
+      light: cosmo
+      dark: darkly
+
+# NOTE: revealjs is deliberately NOT a project-level format.
+# Listing it beside `html` makes Quarto render every page twice, and both
+# outputs claim the same `<name>.html`, so the project render dies with
+# "NotFound ... rename '<name>.html'" on whichever one loses the race.
+# To build slides from a single page, ask for the format explicitly:
+#     quarto render L01/00_intro.qmd --to revealjs
+# and put the slide options in that document's own front matter, e.g.
+#     format:
+#       revealjs:
+#         slide-number: c/t
+#         show-slide-number: all
+#         transition: slide
+#         background-transition: fade
+#         chalkboard: false
+#         progress: true
+    history: false
+    scrollable: true
+    width: 1600
+    height: 900
+    center: false
+
+number-depth: 1
+lightbox: auto

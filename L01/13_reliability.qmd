@@ -1,0 +1,188 @@
+---
+title: "Reliability: Retries and the Four Error Strategies"
+format: html
+---
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/13_reliability.ipynb)
+
+*Run this lesson yourself — opens in Google Colab. You need a free [Groq API key](00b_setup_groq.qmd).*
+
+[Thinking in LangGraph](09_langgraph.qmd) introduced the four kinds of error
+and who fixes each one. This notebook makes them **runnable** — you will watch a
+retry actually fire, rather than read about it.
+
+| Error type | Who fixes it | Strategy |
+|---|---|---|
+| Transient (network, rate limit) | System | `RetryPolicy` |
+| LLM-recoverable (bad tool args, unparseable output) | The LLM | Loop back with the error in context |
+| User-fixable (missing info) | Human | `interrupt()` |
+| Unexpected | Developer | Let it bubble up |
+
+The capstone requires **at least two of the four**, implemented in code — not
+described in a README.
+
+```bash
+pip install -qU langgraph langchain langchain-groq
+```
+
+## 1. Transient retry — `RetryPolicy`
+
+Attach it to the `@task`. To *prove* it works, make the task fail on purpose
+the first time.
+
+```python
+from langgraph.func import entrypoint, task
+from langgraph.types import RetryPolicy
+from langgraph.checkpoint.memory import InMemorySaver
+
+attempts = {"count": 0}
+
+
+@task(retry_policy=RetryPolicy(max_attempts=3, initial_interval=0.5))
+def flaky_lookup(query: str) -> str:
+    attempts["count"] += 1
+    print(f"  [flaky_lookup] attempt #{attempts['count']}")
+    if attempts["count"] == 1:
+        raise ConnectionError("simulated transient network error")
+    return f"results for {query!r}"
+
+
+@entrypoint(checkpointer=InMemorySaver())
+def retry_demo(q: str) -> str:
+    return flaky_lookup(q).result()
+
+
+print(retry_demo.invoke("vector databases",
+                        {"configurable": {"thread_id": "retry-1"}}))
+```
+
+Expected output:
+
+```
+  [flaky_lookup] attempt #1
+  [flaky_lookup] attempt #2
+results for 'vector databases'
+```
+
+Two attempts, no error surfaced, no retry code of your own. That printed trace
+is your evidence.
+
+::: {.callout-warning}
+## Argument name
+It is `retry_policy=` on `@task`. Older examples show `retry=`; if your version
+rejects one, try the other — but a hand-written `for` loop with `time.sleep()`
+is **not** a `RetryPolicy` and does not earn the marks.
+:::
+
+## 2. LLM-recoverable — loop back with the error
+
+When the model produces something invalid, don't crash: hand the error *back*
+to the model and let it correct itself.
+
+```python
+from pydantic import BaseModel, Field, ValidationError
+from typing import Literal
+from langchain_groq import ChatGroq
+
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+
+
+class Route(BaseModel):
+    destination: Literal["billing", "technical", "general"] = Field(
+        description="Which team should handle this ticket")
+
+
+@task
+def classify(text: str) -> Route:
+    """Ask the LLM to classify; on invalid output, re-prompt WITH the error."""
+    router = llm.with_structured_output(Route)
+    feedback = ""
+    for attempt in range(3):
+        try:
+            return router.invoke(f"Classify this ticket.{feedback}\n\n{text}")
+        except ValidationError as e:
+            print(f"  [classify] invalid output on attempt {attempt+1}, re-prompting")
+            feedback = (f"\n\nYour previous answer was rejected: {e}. "
+                        f"Reply with exactly one of: billing, technical, general.")
+    # exhausted -> safe default rather than crashing the workflow
+    return Route(destination="general")
+
+
+print(classify.__name__, "defined")
+```
+
+## 3. User-fixable — `interrupt()`
+
+If the workflow is missing something only a human can supply, pause. This is
+the same primitive as human-in-the-loop approval, used for input rather than
+sign-off.
+
+```python
+from langgraph.types import interrupt, Command
+
+
+@task
+def get_order(order_id: str | None) -> str:
+    if not order_id:
+        supplied = interrupt({
+            "message": "Order ID is required to continue",
+            "field": "order_id",
+        })
+        order_id = supplied
+    return f"order {order_id}: shipped"
+
+
+@entrypoint(checkpointer=InMemorySaver())
+def lookup(inputs: dict) -> str:
+    return get_order(inputs.get("order_id")).result()
+
+
+cfg = {"configurable": {"thread_id": "fix-1"}}
+
+paused = lookup.invoke({"order_id": None}, cfg)
+print("PAUSED:", paused["__interrupt__"][0].value)
+
+resumed = lookup.invoke(Command(resume="A-1029"), cfg)
+print("RESUMED:", resumed)
+```
+
+Expected output:
+
+```
+PAUSED: {'message': 'Order ID is required to continue', 'field': 'order_id'}
+RESUMED: order A-1029: shipped
+```
+
+::: {.callout-important}
+## The most common half-finished deliverable
+Pausing is only half of it. You must also **resume** with
+`Command(resume=...)` and show the workflow completing. A notebook that pauses
+and stops there does not demonstrate human-in-the-loop.
+:::
+
+## 4. Unexpected — let it bubble up
+
+Deliberately *not* catching something is a strategy, and worth one sentence in
+your write-up. A blanket `except Exception: pass` hides the bugs you most need
+to see.
+
+```python
+@entrypoint(checkpointer=checkpointer)
+def workflow(inputs: dict) -> dict:
+    # classify() and lookup() handle their own anticipated failures above.
+    # Anything else — a genuine bug — propagates to the caller, where it is
+    # visible in the traceback and in LangSmith, instead of being swallowed.
+    ...
+```
+
+## Checklist for this lesson
+
+Scoped to what this lesson covers — it is what rubric section 6 (*LangGraph
+functional API & error handling*) is looking for. The full submission list is
+in [Capstone Prep](capstone_prep.qmd).
+
+- [ ] A real `RetryPolicy` object on at least one `@task`
+- [ ] Printed evidence of a retry firing (attempt #1 → #2)
+- [ ] A second strategy implemented **in code**
+- [ ] `interrupt()` **and** a matching `Command(resume=...)` that completes
+- [ ] Your write-up names which two strategies you chose and where they live

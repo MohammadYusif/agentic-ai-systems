@@ -1,0 +1,107 @@
+---
+title: "Setup: your free Groq API key"
+format: html
+---
+
+Every lab in this course calls an LLM through **[Groq](https://groq.com)**, which
+serves open Llama models on a free tier that comfortably covers all of it. You
+need one key, once, and it takes about two minutes.
+
+## 1. Get the key
+
+1. Go to **<https://console.groq.com/keys>** and sign in (Google or GitHub works).
+2. Click **Create API Key**, give it any name.
+3. Copy it. It starts with `gsk_`.
+
+You will not be able to see it again after you close the dialog, so paste it
+somewhere before moving on.
+
+## 2. Put it in Colab Secrets — not in a cell
+
+In Colab, click the **key icon** in the left sidebar, then **Add new secret**:
+
+- **Name:** `GROQ_API_KEY`
+- **Value:** the `gsk_...` key
+- Toggle **Notebook access** on
+
+Then every notebook reads it like this:
+
+```python
+import os
+from google.colab import userdata
+
+os.environ["GROQ_API_KEY"] = userdata.get("GROQ_API_KEY")
+```
+
+::: {.callout-warning}
+## Never paste the key into a code cell
+A key written into a cell gets saved into the notebook, and if you push that
+notebook to GitHub the key is public — and stays in git history even after you
+delete the line. If that happens, **revoke it immediately** at
+<https://console.groq.com/keys> and create a new one.
+
+This is a graded item on the capstone, and it is the most common serious
+mistake in submitted projects. See
+[Never expose API keys](never_expose_api_keys.qmd).
+:::
+
+Running locally instead of Colab? Put it in your environment:
+
+```bash
+export GROQ_API_KEY=gsk_...        # macOS / Linux
+setx GROQ_API_KEY "gsk_..."        # Windows
+```
+
+## 3. Install and use
+
+```bash
+pip install -qU langchain langchain-groq langgraph
+```
+
+```python
+from langchain_groq import ChatGroq
+
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+print(llm.invoke("Reply with exactly: setup works.").content)
+```
+
+If that prints `setup works.` you are ready for every lab.
+
+## Which model to use
+
+| Model | Use it for |
+|---|---|
+| `llama-3.3-70b-versatile` | **The default for this course.** Tool calling, structured output, routing, agents. |
+| `llama-3.1-8b-instant` | Much faster and cheaper on rate limits. Good for simple classification, or when you are iterating. |
+
+Both support tool calling and `with_structured_output`, which is what the agent
+lessons depend on. The current list is at
+<https://console.groq.com/docs/models>.
+
+::: {.callout-important}
+## Groq does not do embeddings
+Groq serves **chat completions only** — there is no embeddings endpoint. The
+RAG lessons therefore embed with a local, free HuggingFace model:
+
+```python
+from langchain_huggingface import HuggingFaceEmbeddings
+
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+```
+
+It downloads once and then runs offline on the machine, with no key at all. The
+[Embeddings lesson](04_embeddings.ipynb) uses OpenRouter to show a hosted
+embeddings API; everywhere else, the local model above is enough.
+:::
+
+## Rate limits
+
+The free tier limits requests and tokens per minute. If you see a **429**, you
+have two options — both already taught in
+[Reliability](13_reliability.qmd):
+
+- add a `RetryPolicy` so transient limits retry themselves, and
+- drop to `llama-3.1-8b-instant` while iterating, and switch back to the 70B
+  model for your final run.
+
+Current limits: <https://console.groq.com/docs/rate-limits>.

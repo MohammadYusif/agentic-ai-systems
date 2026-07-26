@@ -1,0 +1,18 @@
+---
+title: "Assignment 6: Short-term vs Long-term Memory"
+format: html
+---
+
+Your task is to: build a small assistant that keeps **both** kinds of memory, as
+in [the lesson](../12_long_term_memory.qmd).
+
+1. Use a checkpointer (`InMemorySaver`) so a follow-up question in the same
+   `thread_id` understands the previous turn.
+2. Use a Store (`InMemoryStore`) to remember one durable fact about the user —
+   their name, a preference, or a running count.
+3. **Prove the difference.** Run the assistant on `thread-A`, then again on a
+   brand-new `thread-B` with the same user, and show the durable fact survived
+   while the conversation did not.
+
+Keep the printed output of step 3 in your notebook — that output *is* the
+deliverable.

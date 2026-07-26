@@ -1,0 +1,22 @@
+---
+title: "Assignment 6b: Supervisor & Handoffs"
+format: html
+---
+
+Your task is to: build a two-worker system with a real supervisor, as in
+[the lesson](../08b_supervisor_and_handoffs.qmd).
+
+1. Write **two specialist agents** in a domain of your choice — not calendar and
+   email, pick your own.
+2. Put a **supervisor** in front of them, and route with `create_supervisor` or
+   your own structured-output classifier. The routing decision must be made by
+   the model, not by `if ... in question`.
+3. **Show the handoff.** Print the `transfer_to_*` tool calls (or the classifier's
+   `destination` and `reason`) for two requests that should go to different
+   workers.
+4. Add **one escalation path**: a condition under which the workflow stops with
+   `interrupt()` and waits for a person. Resume it with `Command(resume=...)`
+   and show the run completing.
+
+The printed routing evidence from step 3 and the completed resume from step 4
+are the deliverables — a description of them is not.

@@ -1,0 +1,77 @@
+---
+title: "Building Agentic AI Systems"
+subtitle: "A more navigable mirror of the course material"
+format:
+  html:
+    page-layout: full
+    toc: false
+---
+
+::: {.callout-note appearance="simple"}
+**Days 1–4 — lessons, notebooks, and assignments 1–5 — were written by
+[Hassan Algoz](https://github.com/HassanAlgoz) for his
+[agentic-ai-systems](https://github.com/HassanAlgoz/agentic-ai-systems)
+course, and are reproduced here unchanged, with attribution, plus a sidebar and
+navigation to make each lesson easier to follow alongside its code.**
+
+**Day 5, the Capstone Prep page, and assignments 6–9 are additional material
+written by Mohammad Yusif** to extend the course to five days and to close the
+gaps most often seen in submitted capstone projects.
+:::
+
+This course walks through building real Agentic AI systems with
+**LangChain** (the framework), **LangGraph** (the runtime), and
+**LangSmith** (the platform) — from a single tool-calling agent all the way
+to multi-agent, stateful systems with memory and retrieval.
+
+Every lesson below pairs the explanation with the runnable notebook, so you
+can read the "why" and the code side by side on one page. Use the sidebar
+on the left to jump straight to any lesson.
+
+## Pre-Course Assessment
+
+Before starting, take the short pre-assessment — 12 quick questions, about
+10 minutes. It helps gauge where the group is starting from so the course can
+be pitched at the right level. It is **not** graded as part of the course.
+
+[**Take the pre-assessment →**](https://docs.google.com/forms/d/e/1FAIpQLSfvHEwXZ804k90Ax32ZeHjhPPJo8DcUti1DL9-yMMNbw2sG7w/viewform){.btn .btn-primary target="_blank"}
+
+## Schedule
+
+| Day | Description | Materials | Assignment |
+| --- | ----------- | --------- | ---------- |
+|  1  | **Overview**<br/>Introduction: LangChain, LangGraph, LangSmith. | [[Lesson](./L01/00_intro.qmd)]<br/>[[Case Studies](./L01/case-studies.qmd)] | [[Assignment 1](./L01/assignment/01_case_studies_ex.qmd)] |
+|     | **Agents**<br/>Models, Messages, Prompts, Structured Output, Tools, and Internet Search. | [[Notebook](./L01/01_agents.ipynb)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/L01/01_agents.ipynb)] | [[Assignment 2](./L01/assignment/02_create_agent.qmd)] |
+|     | **Structured Output as the Routing Primitive**<br/>How an agent decides — constrained output instead of keyword matching. | [[Notebook](./L01/01b_structured_routing.qmd)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/01b_structured_routing.ipynb)] |  |
+|     | **Sub Agents**<br/> Build a personal assistant with agents as tools. | [[Notebook](./L01/02_subagents.ipynb)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/L01/02_subagents.ipynb)] | [[Assignment 3](./L01/assignment/03_subagents.qmd)] |
+|  2  | **RAG Overview**<br/>Building a knowledge base. Retrieval pipeline and building blocks. RAG Architectures. | [[Lesson](./L01/03_retrieval.qmd)] |  |
+|     | **Embeddings**<br/>What are embeddings and how do they compare similarity? | [[Notebook](./L01/04_embeddings.ipynb)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/L01/04_embeddings.ipynb)] |  |
+|     | **Semantic Search**<br/>Indexing and retrival of documents based on meaning. | [[Notebook](./L01/05_semantic_search.ipynb)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/L01/05_semantic_search.ipynb)] | [[Assignment 4](./L01/assignment/04_semantic_search.qmd)] |
+|     | **RAG Chain and RAG Agent**<br/>Answer questions based on specific sources of information. | [[Notebook](./L01/06_RAG_agent.ipynb)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/L01/06_RAG_agent.ipynb)] | [[Assignment 5](./L01/assignment/05_rag_agent.qmd)] |
+|  3  | **Context and State**<br/>Short-term, long-term memory and context. | [[Notebook](./L01/07_context_and_state.ipynb)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/L01/07_context_and_state.ipynb)] |  |
+|     | **Customer Support Agent**<br/>Apply the State Machine pattern to resolve customer issues and escalate to humans when necessary. | [[Notebook](./L01/08_customer_support_agent.ipynb)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/L01/08_customer_support_agent.ipynb)] |  |
+|     | **Supervisor & Handoffs**<br/>The four multi-agent shapes side by side, and which capstone track each one fits. | [[Notebook](./L01/08b_supervisor_and_handoffs.qmd)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/08b_supervisor_and_handoffs.ipynb)] | [[Assignment 6b](./L01/assignment/06b_supervisor.qmd)] |
+|  4  | **Thinking in LangGraph**<br/>The Functional API, `@task`/`@entrypoint`, and the four error-handling strategies. | [[Lesson](./L01/09_langgraph.qmd)] |  |
+|     | **Workflow Patterns**<br/>Prompt chaining, parallelization, routing, orchestrator-worker, evaluator-optimizer. | [[Notebook](./L01/10_workflows.ipynb)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/L01/10_workflows.ipynb)] |  |
+|     | **LangSmith**<br/>Observability and evaluation concepts. | [[Lesson](./L01/11_langsmith.qmd)] |  |
+|  5  | **Long-Term Memory**<br/>The Store vs. the checkpointer — durable facts that outlive the thread. | [[Notebook](./L01/12_long_term_memory.qmd)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/12_long_term_memory.ipynb)] | [[Assignment 6](./L01/assignment/06_memory.qmd)] |
+|     | **Reliability**<br/>`RetryPolicy` and the four error strategies, made runnable. | [[Notebook](./L01/13_reliability.qmd)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/13_reliability.ipynb)] | [[Assignment 7](./L01/assignment/07_reliability.qmd)] |
+|     | **LangSmith Lab**<br/>From zero to a real trace, then evaluate a run against a dataset. | [[Notebook](./L01/14_langsmith_lab.qmd)]<br/>[[Colab](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/14_langsmith_lab.ipynb)] | [[Assignment 8](./L01/assignment/08_langsmith.qmd)] |
+|     | **Production**<br/>Durable state, secrets, guardrails, and serving the graph. | [[Lesson](./L01/15_production.qmd)] | [[Assignment 9](./L01/assignment/09_production.qmd)] |
+
+## Capstone
+
+Before you start building, read **[Capstone Prep](./L01/capstone_prep.qmd)** —
+it maps each of the 8 rubric sections to the lesson that teaches it, says what
+full marks looks like, and names the mistake that most often costs the points.
+
+
+## Need Help?
+
+- [Get Help](https://docs.langchain.com/oss/python/langchain/get-help) or
+- [Ask the docs anything about LangChain, powered by real-time docs](https://chat.langchain.com/).
+
+
+## Pre-requisites
+
+- Python Basics. To prepare or refresh: [المقدمة البايثونية للبرمجة باللغة العربية](https://halgoz.quarto.pub/pythonia/)
