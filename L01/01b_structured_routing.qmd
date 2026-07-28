@@ -3,7 +3,7 @@ title: "Structured Output as the Routing Primitive"
 format: html
 ---
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/01b_structured_routing.ipynb)
+<a href="https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/01b_structured_routing.ipynb" target="_blank" rel="noopener"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"></a>
 
 *Run this lesson yourself — opens in Google Colab. You need a free [Groq API key](00b_setup_groq.qmd).*
 

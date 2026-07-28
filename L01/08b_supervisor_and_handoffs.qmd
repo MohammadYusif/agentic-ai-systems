@@ -3,7 +3,7 @@ title: "Supervisor, Handoffs, and Multi-Source Routing"
 format: html
 ---
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/08b_supervisor_and_handoffs.ipynb)
+<a href="https://colab.research.google.com/github/MohammadYusif/agentic-ai-systems/blob/master/notebooks/08b_supervisor_and_handoffs.ipynb" target="_blank" rel="noopener"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"></a>
 
 *Run this lesson yourself — opens in Google Colab. You need a free [Groq API key](00b_setup_groq.qmd).*
 
@@ -47,7 +47,7 @@ delegation happens (Track A).
 ```python
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
 
@@ -75,16 +75,22 @@ def draft_email(to: str, subject: str) -> str:
 
 
 # --- workers ------------------------------------------------------------
-calendar_agent = create_react_agent(
-    model=llm, tools=[create_event, list_events], name="calendar_agent",
-    prompt="You handle calendar tasks only.")
+calendar_agent = create_agent(
+    model=llm, tools=[create_event, list_events], name="calendar_agent")
 
-email_agent = create_react_agent(
-    model=llm, tools=[draft_email], name="email_agent",
-    prompt="You draft emails. Never claim an email was sent.")
+email_agent = create_agent(
+    model=llm, tools=[draft_email], name="email_agent")
 
 print("workers ready")
 ```
+
+::: {.callout-note}
+`create_agent` (from `langchain.agents`) is the current LangChain builder for a
+single tool-using agent — it replaces the older `create_react_agent` from
+`langgraph.prebuilt` you may see in other examples. Behavior is the same for
+this lesson's purposes; it does not take the same `prompt=` keyword, so the
+worker's instructions come from its tools' docstrings instead.
+:::
 
 ```python
 from langgraph_supervisor import create_supervisor
@@ -111,7 +117,18 @@ print()
 print(result["messages"][-1].content)
 ```
 
-Expected: a `transfer_to_calendar_agent` call, then the worker's reply.
+Expected output:
+
+```
+handoff -> transfer_to_calendar_agent
+handoff -> transfer_back_to_supervisor
+
+Your design review has been booked for Tuesday.
+```
+
+Two handoffs, not one: the supervisor hands off to `calendar_agent`, and
+`calendar_agent` hands control back once it's done — that return trip is
+`transfer_back_to_supervisor`, and it's expected, not a bug.
 
 ::: {.callout-tip}
 ## What full marks looks like
@@ -190,7 +207,16 @@ done = support.invoke(
 print("\nFINAL:", done)
 ```
 
-Note the human's edit appears in the final reply — that is the difference
+Expected output:
+
+```
+PAUSED: high
+draft: Dear valued customer, I apologize for the inconvenience you've experi ...
+
+FINAL: {'urgency': 'high', 'escalated': True, 'reply': "We've refunded the duplicate charge — it lands in 5 days."}
+```
+
+Note the human's edit appears in the final `reply` — that is the difference
 between demonstrating a handoff and merely pausing.
 
 ::: {.callout-important}
@@ -204,25 +230,104 @@ Two knowledge bases, one classifier deciding which to search. The mistake to
 avoid is building two retrievers and then querying **the same store** for both
 — the routing then changes nothing.
 
+::: {.callout-warning}
+## A Colab quirk, not a code bug
+Colab ships a `chromadb` version that conflicts with its own pre-installed
+`opentelemetry`/`numpy` packages. If `Chroma.from_documents` errors on a fresh
+runtime, pin the versions and disable telemetry before importing anything else:
+
+```bash
+pip uninstall -y chromadb opentelemetry-api opentelemetry-sdk \
+    opentelemetry-exporter-otlp opentelemetry-exporter-otlp-proto-grpc numpy
+pip install -qU chromadb==0.4.18 opentelemetry-api==1.42.1 \
+    opentelemetry-sdk==1.42.1 'numpy<2.0.0'
+```
+
 ```python
+import os
+os.environ["CHROMA_SERVER_NO_TELEMETRY"] = "1"
+```
+:::
+
+```python
+from langchain_community.vectorstores import Chroma
+from langchain_core.documents import Document
+from langchain_community.embeddings.fake import FakeEmbeddings
+
+academic_chunks = [
+    Document(page_content="The history of artificial intelligence in academia."),
+    Document(page_content="Research on neural networks at major universities."),
+]
+campus_chunks = [
+    Document(page_content="Information about student dormitories and dining halls."),
+    Document(page_content="Guidelines for campus events and activities."),
+]
+
+# FakeEmbeddings stands in for a real embedding model here so this cell needs
+# no key at all — it exists to demonstrate the TWO-STORE shape, not real
+# semantic search. Swap in the HuggingFace embeddings from the RAG lessons
+# (see the note below) for anything that needs real retrieval quality.
+embeddings = FakeEmbeddings(size=1536)
+
 # Two SEPARATE stores. This is what makes routing meaningful.
 academic_store = Chroma.from_documents(academic_chunks, embeddings,
                                        collection_name="academic")
 campus_store   = Chroma.from_documents(campus_chunks,   embeddings,
                                        collection_name="campus")
 
+academic_retriever = academic_store.as_retriever(search_kwargs={"k": 2})
+campus_retriever = campus_store.as_retriever(search_kwargs={"k": 2})
+
+
 @task
 def retrieve(question: str, destination: str) -> str:
     if destination == "academic":
-        return academic_retriever.invoke(question)
+        docs = academic_retriever.invoke(question)
+        return "Academic: " + " ".join(d.page_content for d in docs)
     elif destination == "campus":
-        return campus_retriever.invoke(question)
+        docs = campus_retriever.invoke(question)
+        return "Campus: " + " ".join(d.page_content for d in docs)
     else:                                    # "both"
-        return (academic_retriever.invoke(question)
-                + campus_retriever.invoke(question))
+        a = academic_retriever.invoke(question)
+        c = campus_retriever.invoke(question)
+        return ("Academic: " + " ".join(d.page_content for d in a)
+                + "\nCampus: " + " ".join(d.page_content for d in c))
 ```
 
-Pair it with the `MultiRoute` classifier from
+```python
+from langgraph.func import entrypoint
+
+@entrypoint()
+def test_retrieve(inputs: dict):
+    return retrieve(inputs["query"], inputs["destination"]).result()
+
+print(test_retrieve.invoke({"query": "What is the history of AI research?",
+                            "destination": "academic"}))
+print(test_retrieve.invoke({"query": "Where can I find student dormitories?",
+                            "destination": "campus"}))
+```
+
+Expected output (approximately):
+
+```
+Academic: The history of artificial intelligence in academia. Research on neural networks at major universities.
+Campus: Guidelines for campus events and activities. Guidelines for campus events and activities.
+```
+
+::: {.callout-important}
+## Read that output carefully
+The `Campus` line above returned the **same sentence twice**. That's not a
+copy-paste bug in this lesson — it's `FakeEmbeddings` telling the truth about
+what it is: the vectors are pseudo-random, unrelated to the text's actual
+meaning, so with only two documents per store and `k=2`, "relevance" is
+essentially a coin flip. The routing and the two-store plumbing are proven
+correct; the *retrieval quality* is not, because nothing here is actually
+reading the words. For your capstone, replace `FakeEmbeddings` with the real
+`HuggingFaceEmbeddings` from the [RAG lessons](06_RAG_agent.ipynb) — free, no
+key required, and it actually understands text.
+:::
+
+Pair the routing with the `MultiRoute` classifier from
 [the routing lesson](01b_structured_routing.qmd).
 
 **The test that proves it works:** ask a question answerable only from source A
