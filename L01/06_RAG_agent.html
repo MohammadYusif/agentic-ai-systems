@@ -718,7 +718,7 @@ export LANGSMITH_API_KEY="..."</code></pre>
 <section id="loading-documents" class="level3">
 <h3 class="anchored" data-anchor-id="loading-documents">Loading documents</h3>
 <p>We need to first load the blog post contents. We can use <a href="https://docs.langchain.com/oss/python/langchain/retrieval#document_loaders">DocumentLoaders</a> for this, which are objects that load in data from a source and return a list of <a href="https://reference.langchain.com/python/langchain_core/documents/#langchain_core.documents.base.Document">Document</a> objects.</p>
-<p>In this case we’ll use the <a href="https://docs.langchain.com/oss/python/integrations/document_loaders/web_base"><code>WebBaseLoader</code></a>, which uses <code>urllib</code> to load HTML from web URLs and <code>BeautifulSoup</code> to parse it to text. We can customize the HTML -&gt; text parsing by passing in parameters into the <code>BeautifulSoup</code> parser via <code>bs_kwargs</code> (see <a href="https://beautiful-soup-4.readthedocs.io/en/latest/#beautifulsoup">BeautifulSoup docs</a>). In this case only HTML tags with class “post-content”, “post-title”, or “post-header” are relevant, so we’ll remove all others.</p>
+<p>In this case we’ll use the <a href="https://docs.langchain.com/oss/python/integrations/document_loaders#webpages"><code>WebBaseLoader</code></a>, which uses <code>urllib</code> to load HTML from web URLs and <code>BeautifulSoup</code> to parse it to text. We can customize the HTML -&gt; text parsing by passing in parameters into the <code>BeautifulSoup</code> parser via <code>bs_kwargs</code> (see <a href="https://beautiful-soup-4.readthedocs.io/en/latest/#beautifulsoup">BeautifulSoup docs</a>). In this case only HTML tags with class “post-content”, “post-title”, or “post-header” are relevant, so we’ll remove all others.</p>
 <div id="db38a6df" class="cell" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> bs4</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> langchain_community.document_loaders <span class="im">import</span> WebBaseLoader</span>
@@ -1114,7 +1114,7 @@ Tip
 </section>
 <section id="agent-vs-chain" class="level3">
 <h3 class="anchored" data-anchor-id="agent-vs-chain">Agent vs Chain</h3>
-<p>In the above agentic RAG formulation <strong>we allow the LLM to use its discretion</strong> in generating a <a href="../oss/python/langchain/models#tool-calling">tool call</a> to help answer user queries. This is a good general-purpose solution, but comes with some trade-offs:</p>
+<p>In the above agentic RAG formulation <strong>we allow the LLM to use its discretion</strong> in generating a <a href="https://docs.langchain.com/oss/python/langchain/models#tool-calling">tool call</a> to help answer user queries. This is a good general-purpose solution, but comes with some trade-offs:</p>
 <section id="benefits" class="level4">
 <h4 class="anchored" data-anchor-id="benefits">✅ Benefits</h4>
 <ol type="1">
