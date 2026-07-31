@@ -23,6 +23,69 @@ quarto render
 then inspect the actual `<a>`/`<img>` tags in `_site/**/*.html`, or open the
 preview and check the DOM.
 
+## A markdown cell that starts with a bare `---` breaks the whole notebook render
+
+Found building the `modern-data-engineering-ai` sibling site: a markdown cell
+whose content *starts* with a literal `---` horizontal rule (used as a
+section divider before a heading) gets misread by Quarto's ipynb-to-document
+conversion, which also uses `---` as a cell separator when assembling a
+notebook into one document. The render fails with a `YAMLException`
+("end of the stream or a document separator is expected") pointing at
+unrelated content several cells later — the error message doesn't point at
+the actual `---` that caused it, which makes this easy to misdiagnose.
+
+Fix: never start a markdown cell's content with a bare `---`. A `##` heading
+is section-break enough on its own. Check every markdown cell, not just the
+one the error message blames:
+
+```
+python -c "import json; nb=json.load(open('path.ipynb', encoding='utf-8')); [print(i, repr(''.join(c['source'])[:10])) for i,c in enumerate(nb['cells']) if c['cell_type']=='markdown']"
+```
+
+Any cell whose printed prefix starts with `'---` needs fixing.
+
+## A markdown cell's `source` MUST be a list of lines, not one flat string
+
+Found across several `modern-data-engineering-ai` lab notebooks after tools
+(a scripted frontmatter-insertion, and `NotebookEdit`-based fixes) wrote a
+markdown cell's `source` field as one single string instead of nbformat's
+normal list of per-line strings:
+
+```json
+"source": "## Task 1 — Document Chunking\n\nSplit each document into overlapping chunks.\n\n..."
+```
+
+This renders as a **single heading tag that swallows the entire rest of the
+cell** — the heading, every following paragraph, list, and blockquote end up
+inside the one `<h1>`/`<h2>`/`<h3>`, visible as a huge `data-anchor-id` slug
+containing the whole cell's text. Quarto/pandoc's ipynb reader handles this
+fine when `source` is the standard list-of-lines form instead:
+
+```json
+"source": ["## Task 1 — Document Chunking\n", "\n", "Split each document into overlapping chunks.\n", "\n", "..."]
+```
+
+There's no error and no warning — the page renders "successfully" with a
+badly broken heading, easy to miss skimming the rendered output. Check for it
+directly:
+
+```
+python -c "import json; nb=json.load(open('path.ipynb', encoding='utf-8')); print([len(''.join(c['source']) if isinstance(c['source'], list) else c['source']) for c in nb['cells'] if c['cell_type']=='markdown'])"
+```
+
+Normalize any markdown cell whose `source` is a plain `str`:
+
+```python
+for cell in nb["cells"]:
+    if cell["cell_type"] == "markdown" and isinstance(cell["source"], str):
+        cell["source"] = cell["source"].splitlines(keepends=True)
+```
+
+**After using `NotebookEdit` (or any script) to change a markdown cell's
+content, re-check that cell's `source` is still a list** — both `NotebookEdit`
+and ad-hoc frontmatter-insertion scripts have produced the flat-string form
+in practice.
+
 ## The Colab-badge trap (pandoc implicit-figures)
 
 Never write a linked image as its own paragraph in markdown:
@@ -96,6 +159,41 @@ fixes in this repo:
   producing duplicate-looking results), add a callout explaining *why*, so
   the reader isn't left thinking something is broken — and point at the
   real thing to use when it matters (e.g. real embeddings for production).
+
+## Verify every lab notebook cell was actually executed
+
+A notebook can read as complete — functions defined, a `main()` call at the
+bottom, output further down in the same notebook — while one whole section
+was never actually run. This happened building the `modern-data-engineering-ai`
+sibling site: `Day1_Lab.ipynb`'s Part 2 (Spark/Delta) had real captured
+output, but Part 1 (an ETL/ELT/Lakehouse comparison, pure pandas) had
+`execution_count: null` and zero saved outputs on every one of its cells. It
+looked fine on read-through and would have shipped un-executed if not
+specifically checked.
+
+Before treating any lab notebook — source material or a copy going into a
+site — as done, check every code cell:
+
+```
+python -c "import json; nb=json.load(open('path.ipynb', encoding='utf-8')); [print(i, c.get('execution_count'), len(c.get('outputs',[]))) for i,c in enumerate(nb['cells']) if c['cell_type']=='code']"
+```
+
+Any code cell showing `execution_count: None` with 0 outputs needs attention:
+
+- If it can run in this environment (pure Python/pandas, no exotic
+  infra/cloud dependency) — actually run it and inject the real captured
+  output into that cell, in **both** the site's copy and the original source
+  lab notebook, so the source itself stays fixed, not just what's published.
+- If it genuinely needs infrastructure this environment doesn't have (a live
+  Kafka broker, a cloud vector DB, Airflow, a GPU) — don't fabricate output.
+  Say so, and add a callout in the lesson page pointing at Colab or whatever
+  environment it actually needs (the pattern used for the Windows/PySpark
+  caveat elsewhere in this repo).
+
+This is the same bar the workspace's own grading rules apply to student
+submissions once grading is automated — an unexecuted "proof" notebook with
+no captured outputs is a hold, not a pass. Hold our own published labs to it
+too.
 
 ## `_quarto.yml` gotchas
 
